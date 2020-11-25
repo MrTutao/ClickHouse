@@ -438,10 +438,10 @@ void registerStorageGenerateRandom(StorageFactory & factory)
     });
 }
 
-Pipes StorageGenerateRandom::read(
+Pipe StorageGenerateRandom::read(
     const Names & column_names,
     const StorageMetadataPtr & metadata_snapshot,
-    const SelectQueryInfo & /*query_info*/,
+    SelectQueryInfo & /*query_info*/,
     const Context & context,
     QueryProcessingStage::Enum /*processed_stage*/,
     size_t max_block_size,
@@ -467,7 +467,7 @@ Pipes StorageGenerateRandom::read(
     for (UInt64 i = 0; i < num_streams; ++i)
         pipes.emplace_back(std::make_shared<GenerateSource>(max_block_size, max_array_length, max_string_length, generate(), block_header, context));
 
-    return pipes;
+    return Pipe::unitePipes(std::move(pipes));
 }
 
 }

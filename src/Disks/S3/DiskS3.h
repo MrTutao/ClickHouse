@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Disks/DiskFactory.h"
+#include "Disks/Executor.h"
 #include "ProxyConfiguration.h"
 
 #include <aws/s3/S3Client.h>
@@ -9,6 +10,7 @@
 
 namespace DB
 {
+
 /**
  * Storage for persisting data in S3 and metadata on the local disk.
  * Files are represented by file in local filesystem (clickhouse_root/disks/disk_name/path/to/file)
@@ -18,6 +20,8 @@ class DiskS3 : public IDisk
 {
 public:
     friend class DiskS3Reservation;
+
+    class AwsS3KeyKeeper;
 
     DiskS3(
         String name_,
@@ -98,10 +102,20 @@ public:
 
     void setReadOnly(const String & path) override;
 
+    int open(const String & path, mode_t mode) const override;
+    void close(int fd) const override;
+    void sync(int fd) const override;
+
     const String getType() const override { return "s3"; }
+
+    void shutdown() override;
 
 private:
     bool tryReserve(UInt64 bytes);
+
+    void removeMeta(const String & path, AwsS3KeyKeeper & keys);
+    void removeMetaRecursive(const String & path, AwsS3KeyKeeper & keys);
+    void removeAws(const AwsS3KeyKeeper & keys);
 
 private:
     const String name;

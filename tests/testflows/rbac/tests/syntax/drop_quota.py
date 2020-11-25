@@ -2,8 +2,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("drop quota")
@@ -25,7 +25,7 @@ def feature(self, node="clickhouse1"):
         finally:
             with Finally("I drop the quota"):
                 node.query(f"DROP QUOTA IF EXISTS {quota}")
-    
+
     def cleanup_quota(quota):
         with Given(f"I ensure that quota {quota} does not exist"):
             node.query(f"DROP QUOTA IF EXISTS {quota}")

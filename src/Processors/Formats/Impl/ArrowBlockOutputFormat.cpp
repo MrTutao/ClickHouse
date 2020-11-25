@@ -43,13 +43,17 @@ void ArrowBlockOutputFormat::consume(Chunk chunk)
 
 void ArrowBlockOutputFormat::finalize()
 {
-    if (writer)
+    if (!writer)
     {
-        auto status = writer->Close();
-        if (!status.ok())
-            throw Exception(ErrorCodes::UNKNOWN_EXCEPTION,
-                "Error while closing a table: {}", status.ToString());
+        const Block & header = getPort(PortKind::Main).getHeader();
+
+        consume(Chunk(header.getColumns(), 0));
     }
+
+    auto status = writer->Close();
+    if (!status.ok())
+        throw Exception(ErrorCodes::UNKNOWN_EXCEPTION,
+            "Error while closing a table: {}", status.ToString());
 }
 
 void ArrowBlockOutputFormat::prepareWriter(const std::shared_ptr<arrow::Schema> & schema)
@@ -75,7 +79,7 @@ void registerOutputFormatProcessorArrow(FormatFactory & factory)
         "Arrow",
         [](WriteBuffer & buf,
            const Block & sample,
-           FormatFactory::WriteCallback,
+           const RowOutputFormatParams &,
            const FormatSettings & format_settings)
         {
             return std::make_shared<ArrowBlockOutputFormat>(buf, sample, false, format_settings);
@@ -85,7 +89,7 @@ void registerOutputFormatProcessorArrow(FormatFactory & factory)
         "ArrowStream",
         [](WriteBuffer & buf,
            const Block & sample,
-           FormatFactory::WriteCallback,
+           const RowOutputFormatParams &,
            const FormatSettings & format_settings)
         {
             return std::make_shared<ArrowBlockOutputFormat>(buf, sample, true, format_settings);

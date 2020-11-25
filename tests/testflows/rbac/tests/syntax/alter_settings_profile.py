@@ -2,8 +2,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("alter settings profile")
@@ -34,7 +34,7 @@ def feature(self, node="clickhouse1"):
         with Scenario("I alter settings profile with no options", flags=TE, requirements=[RQ_SRS_006_RBAC_SettingsProfile_Alter("1.0")]):
             with When("I alter settings profile"):
                 node.query("ALTER SETTINGS PROFILE profile0")
-        
+
         with Scenario("I alter settings profile short form", flags=TE, requirements=[RQ_SRS_006_RBAC_SettingsProfile_Alter("1.0")]):
             with When("I short form alter settings profile"):
                 node.query("ALTER PROFILE profile0")
@@ -58,7 +58,7 @@ def feature(self, node="clickhouse1"):
             cleanup_profile(profile)
             with When(f"I alter settings profile {profile} using if exists"):
                 node.query(f"ALTER SETTINGS PROFILE IF EXISTS {profile}")
-            
+
             del profile
 
         with Scenario("I alter settings profile to rename, target available", flags=TE, requirements=[RQ_SRS_006_RBAC_SettingsProfile_Alter_Rename("1.0")]):
@@ -78,17 +78,17 @@ def feature(self, node="clickhouse1"):
             finally:
                 with Finally(f"I cleanup target name {new_profile}"):
                     node.query(f"DROP SETTINGS PROFILE IF EXISTS {new_profile}")
-        
+
             del new_profile
 
         with Scenario("I alter settings profile with a setting value", flags=TE, requirements=[
-                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"), 
+                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"),
                 RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables_Value("1.0")]):
             with When("I alter settings profile using settings"):
                 node.query("ALTER SETTINGS PROFILE profile0 SETTINGS max_memory_usage = 100000001")
 
         with Scenario("I alter settings profile with a setting value, does not exist, throws exception", flags=TE, requirements=[
-                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"), 
+                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"),
                 RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables_Value("1.0")]):
             with When("I alter settings profile using settings and nonexistent value"):
                 exitcode, message = errors.unknown_setting("fake_setting")
@@ -137,7 +137,7 @@ def feature(self, node="clickhouse1"):
             del profile
 
         with Scenario("I alter settings profile with multiple settings", flags=TE, requirements=[
-                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"), 
+                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"),
                 RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables_Value("1.0")]):
             with When("I alter settings profile with multiple settings"):
                 node.query("ALTER SETTINGS PROFILE profile0"
@@ -145,7 +145,7 @@ def feature(self, node="clickhouse1"):
                 " SETTINGS max_memory_usage_for_user = 100000001")
 
         with Scenario("I alter settings profile with multiple settings short form", flags=TE, requirements=[
-                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"), 
+                RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables("1.0"),
                 RQ_SRS_006_RBAC_SettingsProfile_Alter_Variables_Value("1.0")]):
             with When("I alter settings profile with short form multiple settings"):
                 node.query("ALTER SETTINGS PROFILE profile0"

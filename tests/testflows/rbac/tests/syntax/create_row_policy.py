@@ -2,8 +2,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("create row policy")
@@ -30,7 +30,7 @@ def feature(self, node="clickhouse1"):
         finally:
             with Finally(f"I drop the row policy on {on}"):
                 node.query(f"DROP ROW POLICY IF EXISTS {policy} ON {on}")
-    
+
     def create_policy(policy, on="default.foo"):
         with Given(f"I ensure I do have policy {policy} on {on}"):
                 node.query(f"CREATE ROW POLICY OR REPLACE {policy} ON {on}")
@@ -47,7 +47,7 @@ def feature(self, node="clickhouse1"):
             with cleanup("policy0"):
                 with When("I create row policy"):
                     node.query("CREATE ROW POLICY policy0 ON default.foo")
-        
+
         with Scenario("I create row policy using short syntax with no options", flags=TE, requirements=[
                 RQ_SRS_006_RBAC_RowPolicy_Create("1.0"),
                 RQ_SRS_006_RBAC_RowPolicy_Create_On("1.0")]):
@@ -89,7 +89,7 @@ def feature(self, node="clickhouse1"):
             with cleanup("policy3"):
                 with When("I create row policy with or replace"):
                     node.query("CREATE ROW POLICY OR REPLACE policy3 ON default.foo")
-        
+
         with Scenario("I create row policy or replace, policy does exist", flags=TE, requirements=[
                 RQ_SRS_006_RBAC_RowPolicy_Create_Replace("1.0"),
                 RQ_SRS_006_RBAC_RowPolicy_Create_On("1.0")]):
@@ -158,14 +158,14 @@ def feature(self, node="clickhouse1"):
                     node.query(f"CREATE ROW POLICY policy8a ON default.foo TO ALL EXCEPT {role}", exitcode=exitcode, message=message)
             del role
 
-        with Scenario("I create row policy assigned to multiple roles", flags=TE, requirements=[ 
+        with Scenario("I create row policy assigned to multiple roles", flags=TE, requirements=[
                 RQ_SRS_006_RBAC_RowPolicy_Create_Assignment("1.0"),
                 RQ_SRS_006_RBAC_RowPolicy_Create_On("1.0")]):
             with cleanup("policy8b"):
                 with When("I create row policy for multiple roles"):
                     node.query("CREATE ROW POLICY policy8b ON default.foo TO role0, role1")
 
-        with Scenario("I create row policy assigned to all", flags=TE, requirements=[ 
+        with Scenario("I create row policy assigned to all", flags=TE, requirements=[
                 RQ_SRS_006_RBAC_RowPolicy_Create_Assignment_All("1.0"),
                 RQ_SRS_006_RBAC_RowPolicy_Create_On("1.0")]):
             with cleanup("policy9"):
@@ -186,7 +186,7 @@ def feature(self, node="clickhouse1"):
                 with When("I create row policy for all except multiple roles"):
                     node.query("CREATE ROW POLICY policy11 ON default.foo TO ALL EXCEPT role0, role1")
 
-        with Scenario("I create row policy assigned to none", flags=TE, requirements=[ 
+        with Scenario("I create row policy assigned to none", flags=TE, requirements=[
                 RQ_SRS_006_RBAC_RowPolicy_Create_Assignment_None("1.0"),
                 RQ_SRS_006_RBAC_RowPolicy_Create_On("1.0")]):
             with cleanup("policy11"):

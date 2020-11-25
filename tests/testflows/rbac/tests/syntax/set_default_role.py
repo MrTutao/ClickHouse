@@ -2,8 +2,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("set default role")
@@ -34,7 +34,7 @@ def feature(self, node="clickhouse1"):
             with And("I drop the roles"):
                 for i in range(roles):
                     node.query(f"DROP ROLE IF EXISTS role{i}")
-    
+
     with Scenario("I set default a nonexistent role to user", requirements=[
             RQ_SRS_006_RBAC_SetDefaultRole("1.0")]):
         with setup(1,0):

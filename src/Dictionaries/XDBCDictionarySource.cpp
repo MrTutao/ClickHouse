@@ -120,7 +120,7 @@ XDBCDictionarySource::XDBCDictionarySource(
     , invalidate_query{config_.getString(config_prefix_ + ".invalidate_query", "")}
     , bridge_helper{bridge_}
     , timeouts{ConnectionTimeouts::getHTTPTimeouts(context_)}
-    , global_context(context_)
+    , global_context(context_.getGlobalContext())
 {
     bridge_url = bridge_helper->getMainURI();
 
@@ -275,6 +275,7 @@ void registerDictionarySourceXDBC(DictionarySourceFactory & factory)
                                    const std::string & config_prefix,
                                    Block & sample_block,
                                    const Context & context,
+                                   const std::string & /* default_database */,
                                    bool /* check_config */) -> DictionarySourcePtr {
 #if USE_ODBC
         BridgeHelperPtr bridge = std::make_shared<XDBCBridgeHelper<ODBCBridgeMixin>>(
@@ -300,6 +301,7 @@ void registerDictionarySourceJDBC(DictionarySourceFactory & factory)
                                  const std::string & /* config_prefix */,
                                  Block & /* sample_block */,
                                  const Context & /* context */,
+                                 const std::string & /* default_database */,
                                  bool /* check_config */) -> DictionarySourcePtr {
         throw Exception{"Dictionary source of type `jdbc` is disabled until consistent support for nullable fields.",
                         ErrorCodes::SUPPORT_IS_DISABLED};

@@ -18,7 +18,6 @@
 #include <DataStreams/IBlockOutputStream.h>
 #include <DataStreams/NativeBlockInputStream.h>
 #include <DataStreams/NativeBlockOutputStream.h>
-#include <DataStreams/NullBlockInputStream.h>
 
 #include <DataTypes/DataTypeFactory.h>
 
@@ -34,6 +33,8 @@
 #include <Processors/Sources/SourceWithProgress.h>
 #include <Processors/Sources/NullSource.h>
 #include <Processors/Pipe.h>
+
+#include <cassert>
 
 
 namespace DB
@@ -206,8 +207,10 @@ public:
         block_out.writeSuffix();
         data_out->next();
         data_out_compressed->next();
+        data_out_compressed->finalize();
         index_out->next();
         index_out_compressed->next();
+        index_out_compressed->finalize();
 
         storage.file_checker.update(data_out_file);
         storage.file_checker.update(index_out_file);
@@ -280,20 +283,23 @@ StorageStripeLog::StorageStripeLog(
 
 void StorageStripeLog::rename(const String & new_path_to_table_data, const StorageID & new_table_id)
 {
-    std::unique_lock<std::shared_mutex> lock(rwlock);
+    assert(table_path != new_path_to_table_data);
+    {
+        std::unique_lock<std::shared_mutex> lock(rwlock);
 
-    disk->moveDirectory(table_path, new_path_to_table_data);
+        disk->moveDirectory(table_path, new_path_to_table_data);
 
-    table_path = new_path_to_table_data;
-    file_checker.setPath(table_path + "sizes.json");
+        table_path = new_path_to_table_data;
+        file_checker.setPath(table_path + "sizes.json");
+    }
     renameInMemory(new_table_id);
 }
 
 
-Pipes StorageStripeLog::read(
+Pipe StorageStripeLog::read(
     const Names & column_names,
     const StorageMetadataPtr & metadata_snapshot,
-    const SelectQueryInfo & /*query_info*/,
+    SelectQueryInfo & /*query_info*/,
     const Context & context,
     QueryProcessingStage::Enum /*processed_stage*/,
     const size_t /*max_block_size*/,
@@ -310,8 +316,7 @@ Pipes StorageStripeLog::read(
     String index_file = table_path + "index.mrk";
     if (!disk->exists(index_file))
     {
-        pipes.emplace_back(std::make_shared<NullSource>(metadata_snapshot->getSampleBlockForColumns(column_names, getVirtuals(), getStorageID())));
-        return pipes;
+        return Pipe(std::make_shared<NullSource>(metadata_snapshot->getSampleBlockForColumns(column_names, getVirtuals(), getStorageID())));
     }
 
     CompressedReadBufferFromFile index_in(disk->readFile(index_file, INDEX_BUFFER_SIZE));
@@ -335,7 +340,7 @@ Pipes StorageStripeLog::read(
 
     /// We do not keep read lock directly at the time of reading, because we read ranges of data that do not change.
 
-    return pipes;
+    return Pipe::unitePipes(std::move(pipes));
 }
 
 

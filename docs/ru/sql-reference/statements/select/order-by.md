@@ -70,6 +70,25 @@ toc_title: ORDER BY
 
 Внешняя сортировка работает существенно менее эффективно, чем сортировка в оперативке.
 
+## Оптимизация чтения данных {#optimize_read_in_order}
+
+ Если в списке выражений в секции `ORDER BY` первыми указаны те поля, по которым проиндексирована таблица, по которой строится выборка, такой запрос можно оптимизировать — для этого используйте настройку [optimize_read_in_order](../../../operations/settings/settings.md#optimize_read_in_order).  
+ 
+ Когда настройка `optimize_read_in_order` включена, при выполнении запроса сервер использует табличные индексы и считывает данные в том порядке, который задан списком выражений `ORDER BY`. Поэтому если в запросе установлен [LIMIT](../../../sql-reference/statements/select/limit.md), сервер не станет считывать лишние данные. Таким образом, запросы к большим таблицам, но имеющие ограничения по числу записей, выполняются быстрее.
+
+Оптимизация работает при любом порядке сортировки `ASC` или `DESC`, но не работает при использовании группировки [GROUP BY](../../../sql-reference/statements/select/group-by.md) и модификатора [FINAL](../../../sql-reference/statements/select/from.md#select-from-final).
+
+Когда настройка `optimize_read_in_order` отключена, при выполнении запросов `SELECT` табличные индексы не используются.
+
+Для запросов с сортировкой `ORDER BY`, большим значением `LIMIT` и условиями отбора [WHERE](../../../sql-reference/statements/select/where.md), требующими чтения больших объемов данных, рекомендуется отключать `optimize_read_in_order` вручную.
+
+Оптимизация чтения данных поддерживается в следующих движках:
+
+- [MergeTree](../../../engines/table-engines/mergetree-family/mergetree.md)
+- [Merge](../../../engines/table-engines/special/merge.md), [Buffer](../../../engines/table-engines/special/buffer.md) и [MaterializedView](../../../engines/table-engines/special/materializedview.md), работающими с таблицами `MergeTree`
+
+В движке `MaterializedView` оптимизация поддерживается при работе с сохраненными запросами (представлениями) вида `SELECT ... FROM merge_tree_table ORDER BY pk`. Но оптимизация не поддерживается для запросов вида `SELECT ... FROM view ORDER BY pk`, если в сохраненном запросе нет секции `ORDER BY`.
+
 ## Модификатор ORDER BY expr WITH FILL  {#orderby-with-fill}
 
 Этот модификатор также может быть скобинирован с модификатором [LIMIT ... WITH TIES](../../../sql-reference/statements/select/limit.md#limit-with-ties)
@@ -195,3 +214,85 @@ ORDER BY
 │ 1970-03-12 │ 1970-01-08 │ original │ 
 └────────────┴────────────┴──────────┘                  
 ```
+
+## Секция OFFSET FETCH {#offset-fetch}
+
+`OFFSET` и `FETCH` позволяют извлекать данные по частям. Они указывают строки, которые вы хотите получить в результате запроса.
+
+``` sql
+OFFSET offset_row_count {ROW | ROWS}] [FETCH {FIRST | NEXT} fetch_row_count {ROW | ROWS} {ONLY | WITH TIES}]
+```
+
+`offset_row_count` или `fetch_row_count` может быть числом или литеральной константой. Если вы не используете `fetch_row_count`, то его значение равно 1.
+
+`OFFSET` указывает количество строк, которые необходимо пропустить перед началом возврата строк из запроса.
+
+`FETCH` указывает максимальное количество строк, которые могут быть получены в результате запроса.
+
+Опция `ONLY` используется для возврата строк, которые следуют сразу же за строками, пропущенными секцией `OFFSET`. В этом случае `FETCH` — это альтернатива [LIMIT](../../../sql-reference/statements/select/limit.md). Например, следующий запрос
+
+``` sql
+SELECT * FROM test_fetch ORDER BY a OFFSET 1 ROW FETCH FIRST 3 ROWS ONLY;
+```
+
+идентичен запросу
+
+``` sql
+SELECT * FROM test_fetch ORDER BY a LIMIT 3 OFFSET 1;
+```
+
+Опция `WITH TIES` используется для возврата дополнительных строк, которые привязываются к последней в результате запроса. Например, если `fetch_row_count` имеет значение 5 и существуют еще 2 строки с такими же значениями столбцов, указанных в `ORDER BY`, что и у пятой строки результата, то финальный набор будет содержать 7 строк.
+
+!!! note "Примечание"
+    Секция `OFFSET` должна находиться перед секцией `FETCH`, если обе присутствуют.
+	
+### Примеры {#examples}
+
+Входная таблица:
+
+``` text
+┌─a─┬─b─┐
+│ 1 │ 1 │
+│ 2 │ 1 │
+│ 3 │ 4 │
+│ 1 │ 3 │
+│ 5 │ 4 │
+│ 0 │ 6 │
+│ 5 │ 7 │
+└───┴───┘
+```
+
+Использование опции `ONLY`:
+
+``` sql
+SELECT * FROM test_fetch ORDER BY a OFFSET 3 ROW FETCH FIRST 3 ROWS ONLY;
+```
+
+Результат:
+
+``` text
+┌─a─┬─b─┐
+│ 2 │ 1 │
+│ 3 │ 4 │
+│ 5 │ 4 │
+└───┴───┘
+```
+
+Использование опции `WITH TIES`:
+
+``` sql
+SELECT * FROM test_fetch ORDER BY a OFFSET 3 ROW FETCH FIRST 3 ROWS WITH TIES;
+```
+
+Результат:
+
+``` text
+┌─a─┬─b─┐
+│ 2 │ 1 │
+│ 3 │ 4 │
+│ 5 │ 4 │
+│ 5 │ 7 │
+└───┴───┘
+```
+
+[Оригинальная статья](https://clickhouse.tech/docs/ru/sql-reference/statements/select/order-by/) <!--hide-->

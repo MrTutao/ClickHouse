@@ -55,7 +55,7 @@ StorageMySQL::StorageMySQL(
     , replace_query{replace_query_}
     , on_duplicate_clause{on_duplicate_clause_}
     , pool(std::move(pool_))
-    , global_context(context_)
+    , global_context(context_.getGlobalContext())
 {
     StorageInMemoryMetadata storage_metadata;
     storage_metadata.setColumns(columns_);
@@ -64,10 +64,10 @@ StorageMySQL::StorageMySQL(
 }
 
 
-Pipes StorageMySQL::read(
+Pipe StorageMySQL::read(
     const Names & column_names_,
     const StorageMetadataPtr & metadata_snapshot,
-    const SelectQueryInfo & query_info_,
+    SelectQueryInfo & query_info_,
     const Context & context_,
     QueryProcessingStage::Enum /*processed_stage*/,
     size_t max_block_size_,
@@ -94,12 +94,9 @@ Pipes StorageMySQL::read(
         sample_block.insert({ column_data.type, column_data.name });
     }
 
-    Pipes pipes;
     /// TODO: rewrite MySQLBlockInputStream
-    pipes.emplace_back(std::make_shared<SourceFromInputStream>(
-            std::make_shared<MySQLBlockInputStream>(pool.get(), query, sample_block, max_block_size_)));
-
-    return pipes;
+    return Pipe(std::make_shared<SourceFromInputStream>(
+            std::make_shared<MySQLLazyBlockInputStream>(pool, query, sample_block, max_block_size_, /* auto_close = */ true)));
 }
 
 

@@ -3,8 +3,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("create user")
@@ -190,7 +190,7 @@ def feature(self, node="clickhouse1"):
     with Scenario("I create user with default role", flags=TE, requirements=[
             RQ_SRS_006_RBAC_User_Create_DefaultRole("1.0")]):
         with Given("I have a role"):
-            node.query("CREATE ROLE default")        
+            node.query("CREATE ROLE default")
         with cleanup("user9"):
             with When("I create a user with a default role"):
                 node.query("CREATE USER user9 DEFAULT ROLE default")

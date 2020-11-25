@@ -7,7 +7,6 @@
 #include <Interpreters/CancellationCode.h>
 #include <Storages/IStorage_fwd.h>
 #include <Interpreters/StorageID.h>
-#include <Storages/SelectQueryInfo.h>
 #include <Storages/TableLockHolder.h>
 #include <Storages/CheckResults.h>
 #include <Storages/StorageInMemoryMetadata.h>
@@ -48,10 +47,15 @@ using ProcessorPtr = std::shared_ptr<IProcessor>;
 using Processors = std::vector<ProcessorPtr>;
 
 class Pipe;
-using Pipes = std::vector<Pipe>;
+class QueryPlan;
+using QueryPlanPtr = std::unique_ptr<QueryPlan>;
 
 class StoragePolicy;
 using StoragePolicyPtr = std::shared_ptr<const StoragePolicy>;
+
+struct StreamLocalLimits;
+class EnabledQuota;
+struct SelectQueryInfo;
 
 struct ColumnSize
 {
@@ -134,15 +138,13 @@ public:
     using ColumnSizeByName = std::unordered_map<std::string, ColumnSize>;
     virtual ColumnSizeByName getColumnSizes() const { return {}; }
 
-public:
-
     /// Get mutable version (snapshot) of storage metadata. Metadata object is
-    /// multiversion, so it can be concurrently chaged, but returned copy can be
+    /// multiversion, so it can be concurrently changed, but returned copy can be
     /// used without any locks.
     StorageInMemoryMetadata getInMemoryMetadata() const { return *metadata.get(); }
 
     /// Get immutable version (snapshot) of storage metadata. Metadata object is
-    /// multiversion, so it can be concurrently chaged, but returned copy can be
+    /// multiversion, so it can be concurrently changed, but returned copy can be
     /// used without any locks.
     StorageMetadataPtr getInMemoryMetadataPtr() const { return metadata.get(); }
 
@@ -162,7 +164,7 @@ public:
     /// virtual columns must contain virtual columns from underlying table.
     ///
     /// User can create columns with the same name as virtual column. After that
-    /// virtual column will be overriden and inaccessible.
+    /// virtual column will be overridden and inaccessible.
     ///
     /// By default return empty list of columns.
     virtual NamesAndTypesList getVirtuals() const;
@@ -181,7 +183,7 @@ private:
     /// Multiversion storage metadata. Allows to read/write storage metadata
     /// without locks.
     MultiVersionStorageMetadataPtr metadata;
-private:
+
     RWLockImpl::LockHolder tryLockTimed(
         const RWLock & rwlock, RWLockImpl::Type type, const String & query_id, const std::chrono::milliseconds & acquire_timeout) const;
 
@@ -196,7 +198,7 @@ public:
     /// sure, that we execute only one simultaneous alter. Doesn't affect share lock.
     TableLockHolder lockForAlter(const String & query_id, const std::chrono::milliseconds & acquire_timeout);
 
-    /// Lock table exclusively. This lock must be acuired if you want to be
+    /// Lock table exclusively. This lock must be acquired if you want to be
     /// sure, that no other thread (SELECT, merge, ALTER, etc.) doing something
     /// with table. For example it allows to wait all threads before DROP or
     /// truncate query.
@@ -211,15 +213,12 @@ public:
       *
       * SelectQueryInfo is required since the stage can depends on the query
       * (see Distributed() engine and optimize_skip_unused_shards).
+      * And to store optimized cluster (after optimize_skip_unused_shards).
       *
       * QueryProcessingStage::Enum required for Distributed over Distributed,
       * since it cannot return Complete for intermediate queries never.
       */
-    QueryProcessingStage::Enum getQueryProcessingStage(const Context & context) const
-    {
-        return getQueryProcessingStage(context, QueryProcessingStage::Complete, {});
-    }
-    virtual QueryProcessingStage::Enum getQueryProcessingStage(const Context &, QueryProcessingStage::Enum /*to_stage*/, const ASTPtr &) const
+    virtual QueryProcessingStage::Enum getQueryProcessingStage(const Context &, QueryProcessingStage::Enum /*to_stage*/, SelectQueryInfo &) const
     {
         return QueryProcessingStage::FetchColumns;
     }
@@ -274,17 +273,26 @@ public:
       * changed during lifetime of the returned pipeline, but the snapshot is
       * guaranteed to be immutable.
       */
-    virtual Pipes read(
+    virtual Pipe read(
         const Names & /*column_names*/,
         const StorageMetadataPtr & /*metadata_snapshot*/,
-        const SelectQueryInfo & /*query_info*/,
+        SelectQueryInfo & /*query_info*/,
         const Context & /*context*/,
         QueryProcessingStage::Enum /*processed_stage*/,
         size_t /*max_block_size*/,
-        unsigned /*num_streams*/)
-    {
-        throw Exception("Method read is not supported by storage " + getName(), ErrorCodes::NOT_IMPLEMENTED);
-    }
+        unsigned /*num_streams*/);
+
+    /// Other version of read which adds reading step to query plan.
+    /// Default implementation creates ReadFromStorageStep and uses usual read.
+    virtual void read(
+        QueryPlan & query_plan,
+        const Names & /*column_names*/,
+        const StorageMetadataPtr & /*metadata_snapshot*/,
+        SelectQueryInfo & /*query_info*/,
+        const Context & /*context*/,
+        QueryProcessingStage::Enum /*processed_stage*/,
+        size_t /*max_block_size*/,
+        unsigned /*num_streams*/);
 
     /** Writes the data to a table.
       * Receives a description of the query, which can contain information about the data write method.
@@ -323,6 +331,8 @@ public:
         throw Exception("Truncate is not supported by storage " + getName(), ErrorCodes::NOT_IMPLEMENTED);
     }
 
+    virtual void checkTableCanBeRenamed() const {}
+
     /** Rename the table.
       * Renaming a name in a file with metadata, the name in the list of tables in the RAM, is done separately.
       * In this function, you need to rename the directory with the data, if any.
@@ -353,10 +363,10 @@ public:
     /** ALTER tables with regard to its partitions.
       * Should handle locks for each command on its own.
       */
-    virtual Pipes alterPartition(const ASTPtr & /* query */, const StorageMetadataPtr & /* metadata_snapshot */, const PartitionCommands & /* commands */, const Context & /* context */)
-    {
-        throw Exception("Partition operations are not supported by storage " + getName(), ErrorCodes::NOT_IMPLEMENTED);
-    }
+    virtual Pipe alterPartition(
+        const StorageMetadataPtr & /* metadata_snapshot */,
+        const PartitionCommands & /* commands */,
+        const Context & /* context */);
 
     /// Checks that partition commands can be applied to storage.
     virtual void checkAlterPartitionIsPossible(const PartitionCommands & commands, const StorageMetadataPtr & metadata_snapshot, const Settings & settings) const;
@@ -411,6 +421,9 @@ public:
         return {};
     }
 
+    /// Call when lock from previous method removed
+    virtual void onActionLockRemove(StorageActionBlockType /* action_type */) {}
+
     std::atomic<bool> is_dropped{false};
 
     /// Does table support index for IN sections
@@ -426,11 +439,17 @@ public:
     /// Otherwise - throws an exception with detailed information.
     /// We do not use mutex because it is not very important that the size could change during the operation.
     virtual void checkTableCanBeDropped() const {}
+    /// Similar to above but checks for DETACH. It's only used for DICTIONARIES.
+    virtual void checkTableCanBeDetached() const {}
 
     /// Checks that Partition could be dropped right now
     /// Otherwise - throws an exception with detailed information.
     /// We do not use mutex because it is not very important that the size could change during the operation.
     virtual void checkPartitionCanBeDropped(const ASTPtr & /*partition*/) {}
+
+    /// Returns true if Storage may store some data on disk.
+    /// NOTE: may not be equivalent to !getDataPaths().empty()
+    virtual bool storesDataOnDisk() const { return false; }
 
     /// Returns data paths if storage supports it, empty vector otherwise.
     virtual Strings getDataPaths() const { return {}; }
@@ -445,6 +464,9 @@ public:
     ///
     /// Does takes underlying Storage (if any) into account.
     virtual std::optional<UInt64> totalRows() const { return {}; }
+
+    /// Same as above but also take partition predicate into account.
+    virtual std::optional<UInt64> totalRowsByPartitionPredicate(const SelectQueryInfo &, const Context &) const { return {}; }
 
     /// If it is possible to quickly determine exact number of bytes for the table on storage:
     /// - memory (approximated, resident)
@@ -480,7 +502,7 @@ private:
     mutable RWLock alter_lock = RWLockImpl::create();
 
     /// Lock required for drop queries. Every thread that want to ensure, that
-    /// table is not dropped have to tabke this lock for read (lockForShare).
+    /// table is not dropped have to table this lock for read (lockForShare).
     /// DROP-like queries take this lock for write (lockExclusively), to be sure
     /// that all table threads finished.
     mutable RWLock drop_lock = RWLockImpl::create();

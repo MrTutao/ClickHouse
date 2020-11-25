@@ -2,8 +2,8 @@ from contextlib import contextmanager
 
 from testflows.core import *
 
+import rbac.helper.errors as errors
 from rbac.requirements import *
-import rbac.tests.errors as errors
 
 @TestFeature
 @Name("drop settings profile")
@@ -25,7 +25,7 @@ def feature(self, node="clickhouse1"):
         finally:
             with Finally("I drop the settings profile"):
                 node.query(f"DROP SETTINGS PROFILE IF EXISTS {profile}")
-    
+
     def cleanup_profile(profile):
         with Given(f"I ensure that profile {profile} does not exist"):
             node.query(f"DROP SETTINGS PROFILE IF EXISTS {profile}")
